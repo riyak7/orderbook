@@ -52,3 +52,14 @@ target_link_libraries(orderbook_tests PRIVATE GTest::gtest_main)
 enable_testing()
 include(GoogleTest)
 gtest_discover_tests(orderbook_tests)
+
+find_package(Threads REQUIRED)
+
+add_executable(exchange_tests
+    tests/exchange_tests.cpp
+    src/Exchange.cpp
+    src/OrderBook.cpp
+)
+target_include_directories(exchange_tests PRIVATE src)
+target_link_libraries(exchange_tests PRIVATE GTest::gtest_main Threads::Threads)
+gtest_discover_tests(exchange_tests)

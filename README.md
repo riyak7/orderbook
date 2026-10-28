@@ -22,6 +22,25 @@ Each price level is a deque because it's a FIFO queue: new orders go on the back
 
 Cancels are lazy. Taking an order out of the middle of a deque is O(n) and moves everything after it, which would break the pointers. So cancel just sets `cancelled = true` and removes the id from the lookup, O(1). The order stays in the deque until matching gets to it and pops it. The cost is that cancelled orders hang around in memory until then, and `print_book` has to skip them (and skip a level if everything in it is cancelled).
 
+## Multiple instruments
+
+`Exchange` (src/Exchange.h/.cpp) runs one `OrderBook` per instrument, each on its own thread. It's built on top of `OrderBook` and doesn't change it.
+
+Each instrument gets a `Worker`: its own book, its own command queue and its own `std::thread`. `submit_limit_order` / `submit_market_order` / `submit_cancel` just push a command onto that instrument's queue and return straight away with a `std::future`. The worker thread pops commands one at a time, applies them to its book and fills in the future with the result (the new id, or whether the cancel worked). Ids are per instrument, so an order is really (instrument, id), and you cancel with the id you got from the future.
+
+Only the worker thread ever touches its book, so `OrderBook` needs no locks. The only shared thing is the queue, which is a `std::queue` behind a `std::mutex`, with a `std::condition_variable` so the worker sleeps while it's empty instead of spinning. One queue and one consumer per instrument means commands for an instrument are applied in the order they were pushed, so the result is exactly what you'd get calling the same `OrderBook` methods in that order on one thread (there's a test that checks this).
+
+`drain()` blocks until every command pushed so far has been applied. After that `print_book(instrument, out)` is safe to call. The destructor tells every worker to stop, wakes them, and joins them. Workers finish whatever is still queued before they exit, so no future is left without a value. An unknown or duplicate instrument name throws `std::invalid_argument`.
+
+Limitations:
+- the set of instruments is fixed when the `Exchange` is made
+- if two threads submit to the same instrument at the same time, the order between them is whichever gets the lock first. Each thread's own commands stay in order though
+- `print_book` reads the book from the calling thread with no lock, so it's only safe after `drain()` and with nobody submitting
+- you have to wait on the add's future before you can cancel that order, since the id comes from the worker
+- one mutex per queue plus a future per command is slow compared to the book itself (~100 ns per order). A lock-free single producer queue and batching would be faster
+- one thread per instrument doesn't scale to thousands of instruments. You'd want a fixed pool of threads with each instrument assigned to one of them
+- if `OrderBook` throws inside a worker (e.g. bad_alloc), that thread calls `std::terminate`
+
 ## building
 
 Needs CMake 3.16+ and a C++17 compiler. I'm using MSYS2 g++ (UCRT64) and ninja on Windows. Google Benchmark and GoogleTest get downloaded by cmake.
