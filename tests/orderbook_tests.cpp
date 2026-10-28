@@ -2,6 +2,8 @@
 #include <sstream>
 #include <string>
 #include "OrderBook.h"
+#include <cmath>
+#include <limits>
 
 // print_book output is the easiest way to see what's resting and in what order
 static std::string book_str(const OrderBook& book) {
@@ -220,4 +222,11 @@ TEST(OrderBookTest, RejectedOrderDoesNotUseUpAnId) {
     OrderBook book;
     book.add_order(Side::BUY, 100.0, 0);
     EXPECT_EQ(book.add_order(Side::BUY, 100.0, 10), 1u);
+}
+
+TEST(OrderBookTest, RejectsNaNAndInfinitePrice) {
+    OrderBook book;
+    EXPECT_EQ(book.add_order(Side::BUY, std::nan(""), 10), INVALID_ORDER_ID);
+    EXPECT_EQ(book.add_order(Side::SELL, std::numeric_limits<double>::infinity(), 10), INVALID_ORDER_ID);
+    EXPECT_EQ(book_str(book), EMPTY_BOOK);
 }

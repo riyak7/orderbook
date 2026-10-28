@@ -1,9 +1,10 @@
 #include "OrderBook.h"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 uint64_t OrderBook::add_order(Side side, double price, int quantity) {
-    if (quantity <= 0 || price <= 0.0) {
+    if (quantity <= 0 || !(price > 0.0) || !std::isfinite(price)) {
         return INVALID_ORDER_ID;
     }
 
